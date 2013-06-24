@@ -1,5 +1,7 @@
 motdgd-sourcemod
 ================
+Please note that the compiled plugin is not included on github, only the source code (sp)!
+
 MOTDgd Plugin (for Sourcemod)
 
 Please follow the instructions at:
