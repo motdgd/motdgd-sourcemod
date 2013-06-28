@@ -1,20 +1,25 @@
 #pragma semicolon 1
 
 #define MOTD_TITLE "MOTDGD AD"
-#define PLUGIN_VERSION "1.03"
+#define PLUGIN_VERSION "1.04"
+#define UPDATE_URL "http://motdgd.com/motdgd_adverts_version.txt"
 
 #include <sourcemod>
+#undef REQUIRE_PLUGIN
+#include <updater>
 
+new Handle:cvForced = INVALID_HANDLE;
 new Handle:cvImmunity = INVALID_HANDLE;
 new Handle:cvMotdUrl = INVALID_HANDLE;
 new iServerPort = -1;
+new iVGUIForcing[MAXPLAYERS + 1] = { 0, ... };
 new iVGUICaught[MAXPLAYERS + 1] = { 0, ... };
 
 new String:sServerIPPort[32];
 
 public Plugin:myinfo = 
 {
-  name = "MOTDgd Ads",
+	name = "MOTDgd Ads",
 	author = "MOTDgd",
 	description = "Intercepts the MOTD and points it to an MOTDgd advertisement",
 	version = PLUGIN_VERSION,
@@ -23,30 +28,45 @@ public Plugin:myinfo =
 
 public OnPluginStart()
 {
+	// Updater plugin support
+	if (LibraryExists("updater"))
+	{
+		Updater_AddPlugin(UPDATE_URL);
+	}
+	
 	// Initialize our ConVars
-	cvImmunity = CreateConVar("sm_motdgd_immunity", "1", "Whether ADMIN_GENERIC players are immune to MOTDgd advertisements");
 	cvMotdUrl = CreateConVar("sm_motdgd_url", "", "The MOTD URL found on Your Portal Dashboard at motdgd.com");
+	cvForced = CreateConVar("sm_motdgd_forced", "1", "Whether eligible players are forced to see MOTDgd for up to 10 seconds");
+	cvImmunity = CreateConVar("sm_motdgd_immunity", "1", "Whether ADMIN_RESERVATION players are immune to MOTDgd advertisements");
 	AutoExecConfig(true);
-
+	
 	CreateConVar("sm_motdgd_version", PLUGIN_VERSION, "MOTDgd Plugin Version", FCVAR_NOTIFY|FCVAR_DONTRECORD);
-
+	
 	// Initialize our global variables
 	new Handle:h_hostIP = FindConVar("hostip");
 	new Handle:h_hostPort = FindConVar("hostport");
 	if(h_hostIP == INVALID_HANDLE || h_hostPort == INVALID_HANDLE)
 		SetFailState("Failed to determine server ip and port.");
-
+	
 	iServerPort = GetConVarInt(h_hostPort);
-
+	
 	new iServerIP = GetConVarInt(h_hostIP);
 	Format(sServerIPPort, sizeof(sServerIPPort), "%d.%d.%d.%d.%d", iServerIP >>> 24 & 255, iServerIP >>> 16 & 255, iServerIP >>> 8 & 255, iServerIP & 255, iServerPort);
-
+	
 	// Intercept the MOTD window and show our ad instead
 	new UserMsg:umVGUIMenu = GetUserMessageId("VGUIMenu");
 	if (umVGUIMenu == INVALID_MESSAGE_ID)
 		SetFailState("This game doesn't support VGUI menus.");
 	HookUserMessage(umVGUIMenu, Hook_VGUIMenu, true);
 	AddCommandListener(ClosedHTMLPage, "closed_htmlpage");
+}
+
+public OnLibraryAdded(const String:name[])
+{
+    if (StrEqual(name, "updater"))
+    {
+        Updater_AddPlugin(UPDATE_URL);
+    }
 }
 
 public OnConfigsExecuted()
@@ -57,6 +77,7 @@ public OnConfigsExecuted()
 public bool:OnClientConnect(client, String:rejectmsg[], maxlen)
 {
         iVGUICaught[client] = 0;
+	iVGUIForcing[client] = 0;
 	
         return true;
 }
@@ -88,22 +109,35 @@ public Action:Hook_VGUIMenu(UserMsg:msg_id, Handle:bf, const players[], playersN
 	// Don't repeat the interception more than once
 	iVGUICaught[client] = 1;
 	
-	// If the player has ADMIN_GENERIC and immunity cvar is set to 1 then don't show them MOTDgd
+	// If the player has ADMIN_RESERVATION and immunity cvar is set to 1 then don't show them MOTDgd
 	if (!CanViewMOTDgd(client) && GetConVarInt(cvImmunity) == 1)
 		return Plugin_Continue;
 	
 	// Display MOTDgd
-	CreateTimer(0.2, NewMOTD, client);
+	CreateTimer(0.1, NewMOTD, client);
 
 	return Plugin_Handled;
 }
 
 public Action:ClosedHTMLPage(client, const String:command[], argc)
 {
-	if (client && IsClientInGame(client) && !IsValidTeam(client))
+	if (client && IsClientInGame(client))
 	{
-		// To ensure player can choose a team after closing the MOTD
-		FakeClientCommand(client, "joingame");
+		if (GetConVarInt(cvForced) == 0 && !IsValidTeam(client))
+		{
+			// To ensure player can choose a team after closing the MOTD
+			FakeClientCommand(client, "joingame");
+		}
+		else if (GetConVarInt(cvForced) == 1 && !IsValidTeam(client) && iVGUIForcing[client] == 1)
+		{
+			// Display MOTDgd
+			CreateTimer(0.1, ReOpenMOTD, client);
+		}
+		else if (GetConVarInt(cvForced) == 1 && !IsValidTeam(client) && iVGUIForcing[client] == 0)
+		{
+			// To ensure player can choose a team after closing the MOTD
+			FakeClientCommand(client, "joingame");
+		}
 	}
 	
 	return Plugin_Continue;
@@ -114,25 +148,69 @@ public Action:NewMOTD(Handle:timer, any:client)
 	decl String:sURL[192];
 	GetConVarString(cvMotdUrl, sURL, sizeof(sURL));
 	SendMOTD(client, MOTD_TITLE, sURL);
+	if (GetConVarInt(cvForced) == 1 && iVGUIForcing[client] == 0)
+	{
+		// If the player must be forced to see MOTDgd for a short duration
+		iVGUIForcing[client] = 1;
+		CreateTimer(10.0, UnlockMOTD, client);
+	}
+}
+
+public Action:ReOpenMOTD(Handle:timer, any:client)
+{
+	SendVoidMOTD(client, MOTD_TITLE, "javascript:void(0);");
+}
+
+public Action:UnlockMOTD(Handle:timer, any:client)
+{
+	iVGUIForcing[client] = 0;
+	
+	if (GetConVarInt(cvForced) == 1 && !IsValidTeam(client))
+	{
+		// To ensure player can choose a team after closing the MOTD
+		FakeClientCommand(client, "joingame");
+	}
 }
 
 stock SendMOTD(client, const String:title[], const String:url[], bool:show=true)
 {
-	new Handle:kv = CreateKeyValues("data");
-	KvSetNum(kv, "cmd", 5);
-	
-	decl String:clientAuth[64];
-	GetClientAuthString(client, clientAuth, sizeof(clientAuth));
-	
-	decl String:sURL[128];
-	Format(sURL, sizeof(sURL), "%s&ipp=%s&v=%s&st=%s", url, sServerIPPort, PLUGIN_VERSION, clientAuth);
-	
-	KvSetString(kv, "msg", sURL);
-	KvSetString(kv, "title", title);
-	KvSetNum(kv, "type", MOTDPANEL_TYPE_URL);
+	if (client && IsClientInGame(client))
+	{
+		new Handle:kv = CreateKeyValues("data");
+		KvSetNum(kv, "cmd", 5);
+		
+		decl String:clientAuth[64];
+		GetClientAuthString(client, clientAuth, sizeof(clientAuth));
+		
+		decl String:sURL[128];
+		Format(sURL, sizeof(sURL), "%s&ipp=%s&v=%s&fv=%s&st=%s", url, sServerIPPort, PLUGIN_VERSION, GetConVarInt(cvForced), clientAuth);
+		
+		KvSetString(kv, "msg", sURL);
+		KvSetString(kv, "title", title);
+		KvSetNum(kv, "type", MOTDPANEL_TYPE_URL);
+		
+		ShowVGUIPanel(client, "info", kv, show);
+		CloseHandle(kv);
+	}
+}
 
-	ShowVGUIPanel(client, "info", kv, show);
-	CloseHandle(kv);
+stock SendVoidMOTD(client, const String:title[], const String:url[], bool:show=true)
+{
+	if (client && IsClientInGame(client))
+	{
+		new Handle:kv = CreateKeyValues("data");
+		KvSetNum(kv, "cmd", 5);
+		
+		decl String:sURL[128];
+		Format(sURL, sizeof(sURL), "%s", url);
+		
+		KvSetString(kv, "msg", sURL);
+		KvSetString(kv, "title", title);
+		KvSetNum(kv, "type", MOTDPANEL_TYPE_URL);
+		
+		ShowVGUIPanel(client, "info", kv, show);
+		CloseHandle(kv);
+	}
 }
 
 bool:IsValidTeam(client)
@@ -147,7 +225,7 @@ stock bool:CanViewMOTDgd( client )
 	if ( aId == INVALID_ADMIN_ID )
 		return true;
 	
-	if ( GetAdminFlag( aId, Admin_Generic ) )
+	if ( GetAdminFlag( aId, Admin_Reservation ) )
 		return false;
 		
 	return true;
