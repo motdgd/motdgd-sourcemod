@@ -1,7 +1,7 @@
 #pragma semicolon 1
 
 #define MOTD_TITLE "MOTDGD AD"
-#define PLUGIN_VERSION "1.04"
+#define PLUGIN_VERSION "1.05"
 #define UPDATE_URL "http://motdgd.com/motdgd_adverts_version.txt"
 
 #include <sourcemod>
@@ -11,9 +11,11 @@
 new Handle:cvForced = INVALID_HANDLE;
 new Handle:cvImmunity = INVALID_HANDLE;
 new Handle:cvMotdUrl = INVALID_HANDLE;
+new Handle:cvReviewTime = INVALID_HANDLE;
 new iServerPort = -1;
 new iVGUIForcing[MAXPLAYERS + 1] = { 0, ... };
 new iVGUICaught[MAXPLAYERS + 1] = { 0, ... };
+new timePlayerReview[MAXPLAYERS + 1] = { 0, ... };
 
 new String:sServerIPPort[32];
 
@@ -38,6 +40,7 @@ public OnPluginStart()
 	cvMotdUrl = CreateConVar("sm_motdgd_url", "", "The MOTD URL found on Your Portal Dashboard at motdgd.com");
 	cvForced = CreateConVar("sm_motdgd_forced", "1", "Whether eligible players are forced to see MOTDgd for up to 10 seconds");
 	cvImmunity = CreateConVar("sm_motdgd_immunity", "1", "Whether ADMIN_RESERVATION players are immune to MOTDgd advertisements");
+	cvReviewTime = CreateConVar("sm_motdgd_review_minutes", "30", "Whether eligible players are shown MOTDgd every X minutes during the game, 0 is disabled, minimum 20 minutes");
 	AutoExecConfig(true);
 	
 	CreateConVar("sm_motdgd_version", PLUGIN_VERSION, "MOTDgd Plugin Version", FCVAR_NOTIFY|FCVAR_DONTRECORD);
@@ -59,6 +62,12 @@ public OnPluginStart()
 		SetFailState("This game doesn't support VGUI menus.");
 	HookUserMessage(umVGUIMenu, Hook_VGUIMenu, true);
 	AddCommandListener(ClosedHTMLPage, "closed_htmlpage");
+	
+	if (GetConVarInt(cvReviewTime) > 0)
+	{
+		HookEvent("player_death", Event_PlayerDeath);
+		CreateTimer(60.0, ReviewTimer, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	}
 }
 
 public OnLibraryAdded(const String:name[])
@@ -79,7 +88,62 @@ public bool:OnClientConnect(client, String:rejectmsg[], maxlen)
         iVGUICaught[client] = 0;
 	iVGUIForcing[client] = 0;
 	
+	if (GetConVarInt(cvReviewTime) > 20)
+	{
+		timePlayerReview[client] = GetConVarInt(cvReviewTime);
+	}
+	else if (GetConVarInt(cvReviewTime) > 0)
+	{
+		timePlayerReview[client] = 20;
+	}
+	else
+	{
+		timePlayerReview[client] = -1;
+	}
+	
         return true;
+}
+
+public OnClientDisconnect(client)
+{
+        iVGUICaught[client] = 0;
+	iVGUIForcing[client] = 0;
+	
+	if (GetConVarInt(cvReviewTime) > 20)
+	{
+		timePlayerReview[client] = GetConVarInt(cvReviewTime);
+	}
+	else if (GetConVarInt(cvReviewTime) > 0)
+	{
+		timePlayerReview[client] = 20;
+	}
+	else
+	{
+		timePlayerReview[client] = -1;
+	}
+}
+
+public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
+{
+	new victimId = GetEventInt(event, "userid");
+	new client = GetClientOfUserId(victimId);
+	
+	if (GetConVarInt(cvReviewTime) > 0)
+	{
+		if (timePlayerReview[client] == 0)
+		{
+			if (GetConVarInt(cvReviewTime) > 20)
+			{
+				timePlayerReview[client] = GetConVarInt(cvReviewTime);
+			}
+			else
+			{
+				timePlayerReview[client] = 20;
+			}
+			
+			CreateTimer(3.0, NewMOTD, client);
+		}
+	}
 }
 
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
@@ -123,7 +187,7 @@ public Action:ClosedHTMLPage(client, const String:command[], argc)
 {
 	if (client && IsClientInGame(client))
 	{
-		if (GetConVarInt(cvForced) == 0 && !IsValidTeam(client))
+		if (( GetConVarInt(cvForced) == 0 && !IsValidTeam(client) ) || ( GetConVarInt(cvForced) == 1 && !IsValidTeam(client) && iVGUIForcing[client] == 0 ))
 		{
 			// To ensure player can choose a team after closing the MOTD
 			FakeClientCommand(client, "joingame");
@@ -132,11 +196,6 @@ public Action:ClosedHTMLPage(client, const String:command[], argc)
 		{
 			// Display MOTDgd
 			CreateTimer(0.1, ReOpenMOTD, client);
-		}
-		else if (GetConVarInt(cvForced) == 1 && !IsValidTeam(client) && iVGUIForcing[client] == 0)
-		{
-			// To ensure player can choose a team after closing the MOTD
-			FakeClientCommand(client, "joingame");
 		}
 	}
 	
@@ -161,15 +220,21 @@ public Action:ReOpenMOTD(Handle:timer, any:client)
 	SendVoidMOTD(client, MOTD_TITLE, "javascript:void(0);");
 }
 
+public Action:ReviewTimer(Handle:timer)
+{
+	for (new i = 1; i < (MAXPLAYERS + 1); i++)
+	{
+		if (IsClientInGame(i))
+		{
+			if (timePlayerReview[i] > 0)
+				timePlayerReview[i]--;
+		}
+	}
+}
+
 public Action:UnlockMOTD(Handle:timer, any:client)
 {
 	iVGUIForcing[client] = 0;
-	
-	if (GetConVarInt(cvForced) == 1 && !IsValidTeam(client))
-	{
-		// To ensure player can choose a team after closing the MOTD
-		FakeClientCommand(client, "joingame");
-	}
 }
 
 stock SendMOTD(client, const String:title[], const String:url[], bool:show=true)
@@ -183,7 +248,7 @@ stock SendMOTD(client, const String:title[], const String:url[], bool:show=true)
 		GetClientAuthString(client, clientAuth, sizeof(clientAuth));
 		
 		decl String:sURL[128];
-		Format(sURL, sizeof(sURL), "%s&ipp=%s&v=%s&fv=%s&st=%s", url, sServerIPPort, PLUGIN_VERSION, GetConVarInt(cvForced), clientAuth);
+		Format(sURL, sizeof(sURL), "%s&ipp=%s&v=%s&fv=%i&st=%s", url, sServerIPPort, PLUGIN_VERSION, GetConVarInt(cvForced), clientAuth);
 		
 		KvSetString(kv, "msg", sURL);
 		KvSetString(kv, "title", title);
