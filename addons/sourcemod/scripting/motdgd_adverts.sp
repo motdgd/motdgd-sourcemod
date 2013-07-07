@@ -1,7 +1,7 @@
 #pragma semicolon 1
 
 #define MOTD_TITLE "MOTDGD AD"
-#define PLUGIN_VERSION "1.05"
+#define PLUGIN_VERSION "1.06"
 #define UPDATE_URL "http://motdgd.com/motdgd_adverts_version.txt"
 
 #include <sourcemod>
@@ -128,20 +128,23 @@ public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 	new victimId = GetEventInt(event, "userid");
 	new client = GetClientOfUserId(victimId);
 	
-	if (GetConVarInt(cvReviewTime) > 0)
+	if (client && IsClientInGame(client))
 	{
-		if (timePlayerReview[client] == 0)
+		if (GetConVarInt(cvReviewTime) > 0)
 		{
-			if (GetConVarInt(cvReviewTime) > 20)
+			if (timePlayerReview[client] == 0)
 			{
-				timePlayerReview[client] = GetConVarInt(cvReviewTime);
+				if (GetConVarInt(cvReviewTime) > 20)
+				{
+					timePlayerReview[client] = GetConVarInt(cvReviewTime);
+				}
+				else
+				{
+					timePlayerReview[client] = 20;
+				}
+				
+				CreateTimer(3.0, NewMOTD, client);
 			}
-			else
-			{
-				timePlayerReview[client] = 20;
-			}
-			
-			CreateTimer(3.0, NewMOTD, client);
 		}
 	}
 }
@@ -204,20 +207,26 @@ public Action:ClosedHTMLPage(client, const String:command[], argc)
 
 public Action:NewMOTD(Handle:timer, any:client)
 {
-	decl String:sURL[192];
-	GetConVarString(cvMotdUrl, sURL, sizeof(sURL));
-	SendMOTD(client, MOTD_TITLE, sURL);
-	if (GetConVarInt(cvForced) == 1 && iVGUIForcing[client] == 0)
+	if (client && IsClientInGame(client))
 	{
-		// If the player must be forced to see MOTDgd for a short duration
-		iVGUIForcing[client] = 1;
-		CreateTimer(10.0, UnlockMOTD, client);
+		decl String:sURL[192];
+		GetConVarString(cvMotdUrl, sURL, sizeof(sURL));
+		SendMOTD(client, MOTD_TITLE, sURL);
+		if (GetConVarInt(cvForced) == 1 && iVGUIForcing[client] == 0)
+		{
+			// If the player must be forced to see MOTDgd for a short duration
+			iVGUIForcing[client] = 1;
+			CreateTimer(10.0, UnlockMOTD, client);
+		}
 	}
 }
 
 public Action:ReOpenMOTD(Handle:timer, any:client)
 {
-	SendVoidMOTD(client, MOTD_TITLE, "javascript:void(0);");
+	if (client && IsClientInGame(client))
+	{
+		SendVoidMOTD(client, MOTD_TITLE, "javascript:void(0);");
+	}
 }
 
 public Action:ReviewTimer(Handle:timer)
@@ -234,7 +243,10 @@ public Action:ReviewTimer(Handle:timer)
 
 public Action:UnlockMOTD(Handle:timer, any:client)
 {
-	iVGUIForcing[client] = 0;
+	if (client && IsClientInGame(client))
+	{
+		iVGUIForcing[client] = 0;
+	}
 }
 
 stock SendMOTD(client, const String:title[], const String:url[], bool:show=true)
@@ -285,13 +297,16 @@ bool:IsValidTeam(client)
 
 stock bool:CanViewMOTDgd( client )
 {
-	new AdminId:aId = GetUserAdmin( client );
-	
-	if ( aId == INVALID_ADMIN_ID )
-		return true;
-	
-	if ( GetAdminFlag( aId, Admin_Reservation ) )
-		return false;
+	if (client && IsClientInGame(client))
+	{
+		new AdminId:aId = GetUserAdmin( client );
 		
+		if ( aId == INVALID_ADMIN_ID )
+			return true;
+		
+		if ( GetAdminFlag( aId, Admin_Reservation ) )
+			return false;
+	}
+	
 	return true;
 }
