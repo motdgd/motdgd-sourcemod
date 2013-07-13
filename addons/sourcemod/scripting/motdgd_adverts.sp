@@ -46,7 +46,7 @@ public OnPluginStart()
 	
 	// Initialize our ConVars
 	cvMotdUrl = CreateConVar("sm_motdgd_url", "", "The MOTD URL found on Your Portal Dashboard at motdgd.com");
-	cvForced = CreateConVar("sm_motdgd_forced", "1", "Whether eligible players are forced to see MOTDgd for up to 10 seconds");
+	cvForced = CreateConVar("sm_motdgd_forced", "6", "Whether eligible players are forced to see MOTDgd for up to X seconds, 0 is disabled, default is 6 seconds");
 	cvImmunity = CreateConVar("sm_motdgd_immunity", "1", "Whether ADMIN_RESERVATION players are immune to MOTDgd advertisements");
 	cvReviewMode = CreateConVar("sm_motdgd_review_mode", "1", "Whether eligible players are shown MOTDgd after [review_minutes] have passed, 0 is on death, 1 is on round start (default)");
 	cvReviewTime = CreateConVar("sm_motdgd_review_minutes", "30", "Whether eligible players are shown MOTDgd every X minutes during the game, 0 is disabled, minimum 20 minutes");
@@ -65,7 +65,7 @@ public OnPluginStart()
 	iServerPort = GetConVarInt(h_hostPort);
 	
 	new iServerIP = GetConVarInt(h_hostIP);
-	Format(sServerIPPort, sizeof(sServerIPPort), "%d.%d.%d.%d.%d", iServerIP >>> 24 & 255, iServerIP >>> 16 & 255, iServerIP >>> 8 & 255, iServerIP & 255, iServerPort);
+	Format(sServerIPPort, sizeof(sServerIPPort), "%d.%d.%d.%d&pt=%d", iServerIP >>> 24 & 255, iServerIP >>> 16 & 255, iServerIP >>> 8 & 255, iServerIP & 255, iServerPort);
 	
 	new String:gameDir[64];
 	GetGameFolderName(gameDir, sizeof(gameDir));
@@ -155,6 +155,7 @@ public OnClientConnected(client)
 {
 	ResetClientVars(client);
 }
+
 public OnClientDisconnect(client)
 {
 	ResetClientVars(client);
@@ -178,6 +179,7 @@ ResetClientVars(client)
 		timePlayerReview[client] = -1;
 	}
 }
+
 public CheckReview(client)
 {
 	if(GetConVarInt(cvReviewTime) > 0)
@@ -303,12 +305,12 @@ public Action:ClosedHTMLPage(client, const String:command[], argc)
 {
 	if(IsPlayerValid(client))
 	{
-		if((GetConVarInt(cvForced) == 0 && !IsValidTeam(client)) || (GetConVarInt(cvForced) == 1 && !IsValidTeam(client) && iVGUIForcing[client] == 0))
+		if((GetConVarInt(cvForced) == 0 && !IsValidTeam(client)) || (GetConVarInt(cvForced) >= 1 && !IsValidTeam(client) && iVGUIForcing[client] == 0))
 		{
 			// To ensure player can choose a team after closing the MOTD
 			FakeClientCommand(client, "joingame");
 		}
-		else if(GetConVarInt(cvForced) == 1 && !IsValidTeam(client) && iVGUIForcing[client] == 1)
+		else if(GetConVarInt(cvForced) >= 1 && !IsValidTeam(client) && iVGUIForcing[client] == 1)
 		{
 			// Display MOTDgd
 			CreateTimer(0.1, ReOpenMOTD, GetClientUserId(client));
@@ -326,11 +328,11 @@ public Action:NewMOTD(Handle:timer, any:userid)
 		new String:sURL[192];
 		GetConVarString(cvMotdUrl, sURL, sizeof(sURL));
 		SendMOTD(client, MOTD_TITLE, sURL);
-		if (GetConVarInt(cvForced) == 1 && iVGUIForcing[client] == 0)
+		if (GetConVarInt(cvForced) >= 1 && iVGUIForcing[client] == 0)
 		{
 			// If the player must be forced to see MOTDgd for a short duration
 			iVGUIForcing[client] = 1;
-			CreateTimer(10.0, UnlockMOTD, GetClientUserId(client));
+			CreateTimer(GetConVarFloat(cvForced), UnlockMOTD, GetClientUserId(client));
 		}
 	}
 }
@@ -372,13 +374,16 @@ stock SendMOTD(client, const String:title[], const String:url[], bool:show=true)
 	if(IsPlayerValid(client))
 	{
 		new Handle:kv = CreateKeyValues("data");
-		KvSetNum(kv, "cmd", 5);
+		if (!isL4D && !isL4D2)
+			KvSetNum(kv, "cmd", 5);
+		else
+			KvSetString(kv, "cmd", "closed_htmlpage");
 		
 		new String:clientAuth[64];
 		GetClientAuthString(client, clientAuth, sizeof(clientAuth));
 		
 		new String:sURL[128];
-		Format(sURL, sizeof(sURL), "%s&ipp=%s&v=%s&fv=%i&st=%s", url, sServerIPPort, PLUGIN_VERSION, GetConVarInt(cvForced), clientAuth);
+		Format(sURL, sizeof(sURL), "%s&ip=%s&v=%s&fv=%i&st=%s", url, sServerIPPort, PLUGIN_VERSION, GetConVarInt(cvForced), clientAuth);
 		
 		KvSetString(kv, "msg", sURL);
 		KvSetString(kv, "title", title);
@@ -394,7 +399,10 @@ stock SendVoidMOTD(client, const String:title[], const String:url[], bool:show=t
 	if(IsPlayerValid(client))
 	{
 		new Handle:kv = CreateKeyValues("data");
-		KvSetNum(kv, "cmd", 5);
+		if (!isL4D && !isL4D2)
+			KvSetNum(kv, "cmd", 5);
+		else
+			KvSetString(kv, "cmd", "closed_htmlpage");
 		
 		new String:sURL[128];
 		Format(sURL, sizeof(sURL), "%s", url);
