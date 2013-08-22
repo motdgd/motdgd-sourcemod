@@ -11,7 +11,7 @@
 #define PLUGIN_URL "http://motdgd.com"
 
 #define MOTDGD_BACKEND_URL "http://motdgd.com/ads/backend.php"
-#define MOTDGD_UPDATE_URL "http://github.com/motdgd/motdgd-sourcemod/raw/master/motdgd_adverts_2_version.txt"
+#define MOTDGD_UPDATE_URL "http://motdgd.com/motdgd_adverts_2_version.txt"
 #define MOTDGD_MOTD_TITLE "SPONSORED AD"
 
 //////////////////////////////
