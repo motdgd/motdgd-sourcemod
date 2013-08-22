@@ -7,11 +7,11 @@
 #define PLUGIN_NAME "MOTDgd Adverts"
 #define PLUGIN_AUTHOR "Zephyrus (Modified by Ixel)"
 #define PLUGIN_DESCRIPTION "Intercepts the MOTD and points it to an MOTDgd advertisement"
-#define PLUGIN_VERSION "2.0.0"
+#define PLUGIN_VERSION "2.0.1"
 #define PLUGIN_URL "http://motdgd.com"
 
 #define MOTDGD_BACKEND_URL "http://motdgd.com/ads/backend.php"
-#define MOTDGD_UPDATE_URL "http://motdgd.com/motdgd_adverts_2_version.txt"
+#define MOTDGD_UPDATE_URL "http://github.com/motdgd/motdgd-sourcemod/raw/master/motdgd_adverts_2_version.txt"
 #define MOTDGD_MOTD_TITLE "SPONSORED AD"
 
 //////////////////////////////
@@ -558,7 +558,7 @@ public Action:Timer_GetAdStatus(Handle:timer, any:userid)
 	GetClientAuthString(client, STRING(m_szSteamID));
 	GetClientIP(client, STRING(m_szClientIP), true);
 
-	Format(STRING(m_szRequestURL), "%s?serverip=%s&serverport=%d&plugin_version=%s&player_steamid=%s&player_ip=%s", MOTDGD_BACKEND_URL, g_szServerIP, g_iServerPort, PLUGIN_VERSION, m_szSteamID, m_szClientIP);
+	Format(STRING(m_szRequestURL), "%s?ip=%s&pt=%d&v=%s&st=%s", MOTDGD_BACKEND_URL, g_szServerIP, g_iServerPort, PLUGIN_VERSION, m_szSteamID);
 
 	// Request a customized ad for the client
 	if(!EasyHTTP(m_szRequestURL, Helper_GetAdStatus_Complete, GetClientUserId(client)))
@@ -639,7 +639,7 @@ stock Helper_SendMOTD(client, const String:title[], const String:url[], bool:sho
 
 	Format(STRING(m_szRequestURL), "%s&ip=%s&pt=%d&v=%s&st=%s", url, g_szServerIP, g_iServerPort, PLUGIN_VERSION, m_szSteamID);
 
-	KvSetString(kv, "msg", url);
+	KvSetString(kv, "msg", m_szRequestURL);
 	KvSetString(kv, "title", title);
 	KvSetNum(kv, "type", type);
 
