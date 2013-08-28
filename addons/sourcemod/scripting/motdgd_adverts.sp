@@ -401,7 +401,7 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
 		return Plugin_Continue;
 
 	new client = GetClientOfUserId(GetEventInt(event, "userid"));
-	if(client && IsClientInGame(client))
+	if(client && IsClientInGame(client) && !IsPlayerAlive(client))
 		Helper_RequestAd(client);
 
 	return Plugin_Continue;
