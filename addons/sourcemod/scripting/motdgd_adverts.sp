@@ -399,9 +399,14 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
 {
 	if(!g_eCvars[g_cvarDeathAds][aCache])
 		return Plugin_Continue;
+	
+	CreateTimer(0.0, Timer_HandleDeath, GetEventInt(event, "userid"));
+}
 
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
-	if(client && IsClientInGame(client))
+public Action:Timer_HandleDeath(Handle:timer, any:userid) {
+	new client = GetClientOfUserId(userid);
+	
+	if(client && IsClientInGame(client) && !IsPlayerAlive(client))
 		Helper_RequestAd(client);
 
 	return Plugin_Continue;
