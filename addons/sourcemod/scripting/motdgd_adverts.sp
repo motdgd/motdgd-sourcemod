@@ -7,7 +7,7 @@
 #define PLUGIN_NAME "MOTDgd Adverts"
 #define PLUGIN_AUTHOR "Zephyrus (Modified by Ixel)"
 #define PLUGIN_DESCRIPTION "Intercepts the MOTD and points it to an MOTDgd advertisement"
-#define PLUGIN_VERSION "2.0.2"
+#define PLUGIN_VERSION "2.0.1"
 #define PLUGIN_URL "http://motdgd.com"
 
 #define MOTDGD_BACKEND_URL "http://motdgd.com/ads/backend.php"
@@ -399,14 +399,9 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
 {
 	if(!g_eCvars[g_cvarDeathAds][aCache])
 		return Plugin_Continue;
-	
-	CreateTimer(0.0, Timer_HandleDeath, GetEventInt(event, "userid"));
-}
 
-public Action:Timer_HandleDeath(Handle:timer, any:userid) {
-	new client = GetClientOfUserId(userid);
-	
-	if(client && IsClientInGame(client) && !IsPlayerAlive(client))
+	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	if(client && IsClientInGame(client))
 		Helper_RequestAd(client);
 
 	return Plugin_Continue;
@@ -636,7 +631,15 @@ stock Helper_SendMOTD(client, const String:title[], const String:url[], bool:sho
 	else
 		KvSetString(kv, "cmd", "closed_htmlpage");
 
-	KvSetString(kv, "msg", url);
+	// Format our request URL
+	decl String:m_szRequestURL[128];
+	new String:m_szSteamID[32] = "STEAM_1:0:0"; // May be uninitialized yet...
+
+	GetClientAuthString(client, STRING(m_szSteamID));
+
+	Format(STRING(m_szRequestURL), "%s&ip=%s&pt=%d&v=%s&st=%s", url, g_szServerIP, g_iServerPort, PLUGIN_VERSION, m_szSteamID);
+
+	KvSetString(kv, "msg", m_szRequestURL);
 	KvSetString(kv, "title", title);
 	KvSetNum(kv, "type", type);
 
